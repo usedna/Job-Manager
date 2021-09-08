@@ -4,6 +4,7 @@ import queue
 import threading
 import dill
 from server.job import *
+import logging
 
 mutex = threading.Lock()
 
@@ -16,7 +17,7 @@ def function(job_manager, guid):
         job_manager.set_result(result, guid)
     except Exception as ex:
         job_manager.set_status('Error', guid)
-        print(ex)
+        logging.exception(f"Exception occurred in the job function")
         return ex
     finally:
         job_manager.job2json()
