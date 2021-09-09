@@ -7,9 +7,6 @@ from server.job import *
 import logging
 
 
-# mutex = threading.Lock()
-
-
 def function(job_manager, guid):
     job_manager.set_status('Running', guid)
     try:
