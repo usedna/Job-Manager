@@ -1,12 +1,13 @@
 import json
 import os.path
 import queue
-import threading
+from server.stop_thread import StoppableThread
 import dill
 from server.job import *
 import logging
 
-mutex = threading.Lock()
+
+# mutex = threading.Lock()
 
 
 def function(job_manager, guid):
@@ -28,22 +29,23 @@ class JobManager:
     q = queue.Queue()
     running_jobs = {}
     done_jobs = {}
+    threads = {}
 
     def __init__(self, available_jobs=5):
         self.available_jobs = available_jobs
-
 
     def register_job(self, data, job_type):
         a_job = Job(data, job_type)
         self.running_jobs.update({a_job.guid: a_job})
         self.job2json()
-        th = threading.Thread(target=self.monitor, args=(a_job.guid,))
+        th = StoppableThread(target=self.monitor, args=(a_job.guid,))
         th.start()
         return a_job.guid
 
     def start_job(self, guid):
         self.acquire()
-        th = threading.Thread(target=function, args=(self, guid))
+        th = StoppableThread(target=function, args=(self, guid))
+        self.threads.update({guid: th})
         th.start()
 
     @staticmethod
@@ -84,6 +86,10 @@ class JobManager:
             with open('queue.bin', 'wb') as q_file:
                 dill.dump(self.q, q_file)
 
+    def q_deserialization(self):
+        with open('queue.bin', 'rb') as q_file:
+            self.q = dill.load(q_file)
+
     def set_status(self, new_status, guid):
         self.running_jobs[guid].status = new_status
 
@@ -116,10 +122,20 @@ class JobManager:
             if self.q.empty():
                 self.start_job(guid)
             else:
-                self.start_qjobs()
+                self.start_q_jobs()
 
-    def start_qjobs(self):
+    def start_q_jobs(self):
         while not self.q.empty():
             self.start_job(self.q.get())
             if not self.job_is_available():
                 break
+
+    def is_running(self, guid):
+        return guid in self.done_jobs.keys() or self.running_jobs[guid].status in ['Created', 'Running']
+
+    def stop_task(self, guid):
+        if self.is_running(guid):
+            self.threads[guid].stop()
+            if self.threads[guid].stopped():
+                self.set_status('Canceled', guid)
+                self.job2json()
